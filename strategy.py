@@ -16,6 +16,7 @@ class StrategyEngine:
         self.config = config
         self.models = models
         self.risk_manager = risk_manager
+        self.timeframe = ""
         self.last_signal_time = self._load_last_signal_time()
 
     def _load_last_signal_time(self):
@@ -115,7 +116,7 @@ class StrategyEngine:
             'tp': tp,
             'rrr': round(rrr, 2),
             'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'timeframe': self.timeframe  # ditentukan di luar
+            'timeframe': self.timeframe
         }
 
         # Update cooldown state
