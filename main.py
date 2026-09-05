@@ -1,6 +1,7 @@
 import websocket
 import json
 import logging
+import os
 import time
 from datetime import datetime
 import pytz
@@ -67,13 +68,20 @@ def main():
     models = ModelManager(config)
     risk_manager = RiskManager(config)
 
-    # Kirim notifikasi startup hanya jika state file belum ada (sekali saja)
+    # Kirim notifikasi startup hanya jika state file belum ada
+    # dan bot berjalan dalam jam aktif
     if not os.path.exists(config.STATE_FILE):
-        notifier.send_startup()
+        # Ambil harga terkini untuk dimasukkan ke notifikasi startup
+        candles = fetch_candles(config.SYMBOL, 300, 2)  # 2 candle terakhir M5
+        price = None
+        if candles:
+            price = float(candles[-1]['close'])
+        notifier.send_startup(price)
         # Buat state file kosong
         with open(config.STATE_FILE, 'w') as f:
             json.dump({'last_signal_time': '2000-01-01T00:00:00'}, f)
 
+    any_candle_fetched = False
     signals = []
     for granularity in config.TIMEFRAMES:
         tf_label = f"M{granularity//60}" if granularity >= 60 else f"S{granularity}"
@@ -82,6 +90,7 @@ def main():
         if not candles:
             logger.error(f"Gagal mengambil data untuk {tf_label}")
             continue
+        any_candle_fetched = True
         df = candles_to_dataframe(candles)
         df = calculate_indicators(df)
 
@@ -100,6 +109,9 @@ def main():
         best_signal = signals[0]
         notifier.send_signal(best_signal)
         logger.info("Sinyal terkirim ke Telegram")
+    elif not any_candle_fetched:
+        # Semua timeframe gagal diambil, kirim notifikasi error
+        notifier.send_error("Gagal mengambil data dari Deriv untuk semua timeframe.")
     else:
         logger.info("Tidak ada sinyal valid")
 
