@@ -26,13 +26,15 @@ class TelegramNotifier:
         except Exception as e:
             logger.exception(f"Telegram exception: {e}")
 
-    def send_startup(self):
+    def send_startup(self, price=None):
         text = (
             "✅ <b>Bot XAUUSD Monitoring Aktif</b>\n"
             "Terhubung ke Deriv API.\n"
             "Mode: Batch monitoring (setiap 5 menit).\n"
             "Jam aktif: Senin 05:00 - Sabtu 05:00 WIB"
         )
+        if price is not None:
+            text += f"\n💰 Harga terkini: {price:.2f}"
         self.send_message(text)
 
     def send_signal(self, signal):
