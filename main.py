@@ -65,12 +65,6 @@ class MarketAnalyzer:
     """Analisis Kuantitatif: Kalman, ATR, dan Regime Detection"""
     @staticmethod
     def fetch_deriv_candles(symbol: str = "frxXAUUSD", granularity: int = 300, count: int = 100) -> List[Dict[str, float]]:
-        url = f"https://ws.derivws.com/websockets/v3?app_id={DERIV_APP_ID}"
-        # Menggunakan HTTP REST/JSON-RPC POST atau koneksi singkat via requests/websocket untuk fetch sekali jalan
-        # Untuk kesederhanaan dan kestabilan skrip berkala 5 menit, kita gunakan websocket singkat atau endpoint publik deriv jika tersedia, 
-        # namun karena Deriv berbasis WS murni, kita bisa buka koneksi sebentar ambil data lalu tutup.
-        import websocket
-        
         ws_url = f"wss://ws.derivws.com/websockets/v3?app_id={DERIV_APP_ID}"
         payload = json.dumps({
             "ticks_history": symbol,
@@ -102,7 +96,6 @@ class MarketAnalyzer:
 
     @staticmethod
     def evaluate():
-        import json
         candles = MarketAnalyzer.fetch_deriv_candles()
         if not candles or len(candles) < 20:
             logger.error("Data candle tidak mencukupi untuk analisis.")
@@ -123,9 +116,11 @@ class MarketAnalyzer:
         tr = np.maximum(highs[1:] - lows[1:], np.maximum(abs(highs[1:] - closes[:-1]), abs(lows[1:] - closes[:-1])))
         atr = float(np.mean(tr[-14:]))
 
-        # Deteksi Regime Sederhana
-        volatility = np.std(np.diff(closes[-20:]) / closes[-21:-1])
+        # Deteksi Regime Sederhana (Diperbaiki agar ukuran array konsisten)
+        recent_closes = closes[-21:]
+        volatility = np.std(np.diff(recent_closes) / recent_closes[:-1])
         mean_range = np.mean(closes[-20:])
+        
         regime = "TRENDING"
         if volatility > (mean_range * 0.0015):
             regime = "HIGH_VOLATILITY"
