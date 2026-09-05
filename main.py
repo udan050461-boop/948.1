@@ -51,22 +51,6 @@ def candles_to_dataframe(candles):
     return df
 
 def main():
-    notifier = TelegramNotifier(config.TELEGRAM_TOKEN, config.TELEGRAM_CHAT_ID)
-
-    # Kirim notifikasi startup SEKALI saat bot pertama kali dijalankan (kapan pun)
-    # sebelum pengecekan jam aktif
-    if not os.path.exists(config.STATE_FILE):
-        # Ambil harga terkini untuk ditampilkan
-        candles = fetch_candles(config.SYMBOL, 300, 2)
-        price = None
-        if candles:
-            price = float(candles[-1]['close'])
-        notifier.send_startup(price)
-        # Buat state file kosong agar notif tidak terulang
-        with open(config.STATE_FILE, 'w') as f:
-            json.dump({'last_signal_time': '2000-01-01T00:00:00'}, f)
-        logger.info("Notifikasi startup terkirim")
-
     # Periksa jam aktif (WIB)
     tz = pytz.timezone('Asia/Jakarta')
     now = datetime.now(tz)
@@ -80,8 +64,22 @@ def main():
         logger.info("Senin sebelum 05:00 WIB, keluar")
         return
 
+    notifier = TelegramNotifier(config.TELEGRAM_TOKEN, config.TELEGRAM_CHAT_ID)
     models = ModelManager(config)
     risk_manager = RiskManager(config)
+
+    # Kirim notifikasi startup hanya jika state file belum ada
+    # dan bot berjalan dalam jam aktif
+    if not os.path.exists(config.STATE_FILE):
+        # Ambil harga terkini untuk dimasukkan ke notifikasi startup
+        candles = fetch_candles(config.SYMBOL, 300, 2)  # 2 candle terakhir M5
+        price = None
+        if candles:
+            price = float(candles[-1]['close'])
+        notifier.send_startup(price)
+        # Buat state file kosong
+        with open(config.STATE_FILE, 'w') as f:
+            json.dump({'last_signal_time': '2000-01-01T00:00:00'}, f)
 
     any_candle_fetched = False
     signals = []
@@ -96,6 +94,7 @@ def main():
         df = candles_to_dataframe(candles)
         df = calculate_indicators(df)
 
+        # Inisialisasi StrategyEngine dengan timeframe
         engine = StrategyEngine(config, models, risk_manager)
         engine.timeframe = tf_label
         signal = engine.process_dataframe(df)
@@ -103,12 +102,28 @@ def main():
             signals.append(signal)
             logger.info(f"Sinyal {tf_label}: {signal['direction']} @ {signal['entry']}")
 
+    # Kirim sinyal (maksimal satu per run untuk anti‑spam)
     if signals:
+        # Prioritaskan timeframe lebih kecil (M5)
         signals.sort(key=lambda x: x['timeframe'])
         best_signal = signals[0]
         notifier.send_signal(best_signal)
         logger.info("Sinyal terkirim ke Telegram")
     elif not any_candle_fetched:
+        # Semua timeframe gagal diambil, kirim notifikasi error
         notifier.send_error("Gagal mengambil data dari Deriv untuk semua timeframe.")
     else:
         logger.info("Tidak ada sinyal valid")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        logger.exception("Fatal error")
+        # Coba kirim notifikasi error
+        try:
+            notifier = TelegramNotifier(config.TELEGRAM_TOKEN, config.TELEGRAM_CHAT_ID)
+            notifier.send_error(str(e))
+        except:
+            pass
+        raise
